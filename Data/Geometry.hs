@@ -9,7 +9,7 @@ module Data.Geometry (
   , Vector3 (..)
 ) where
 
-import Data.List (foldl', nubBy, sort)
+import Data.List (foldl', nub, sort)
 import Data.Vector.V2 (Vector2(..))
 import Data.Vector.V3 (Vector3(..))
 import Graphics.Triangulation.Delaunay (triangulate)
@@ -73,25 +73,30 @@ instance Vector2D Vector2 where
 to3D :: Double -> Vector2 -> Vector3
 to3D z (Vector2 x y) = Vector3 x y z
 
-type Face = (Vector3, Vector3, Vector3)
-type Surface = [Face]
+newtype Face a = Face (a, a, a) deriving (Show)
+
+type Surface = [Face Vector3]
 
 extrude :: Vector2D a => Double -> Geometry a -> Surface
 extrude h (MultiGeometry gs) = concat $ map (extrude h) gs
 extrude h (Polygon ob []) = floor ++ ceiling ++ walls
   where
-    floor = map (mface sink) $ nubBy eqFace $ triangulate ob2d
-    ceiling = map (mface rise) $ nubBy eqFace $ triangulate ob2d
+    floor = map (fmap sink) $ nub $ map Face $ triangulate ob2d
+    ceiling = map (fmap rise) $ nub $ map Face $ triangulate ob2d
     walls = concat $ map wall $ segments ob2d
-    wall (a,b) = [(rise a, rise b, sink a), (sink a, sink b, rise b)]
+    wall (a,b) = [ Face (rise a, rise b, sink a)
+                 , Face (sink a, sink b, rise b)]
     rise = to3D h
     sink = to3D 0
-    mface f (a,b,c) = (f a, f b, f c)
     ob2d = map to2D ob
 extrude h (Polygon ob ib) = undefined
 
 
+instance Functor Face where
+    fmap f (Face (a,b,c)) = Face (f a, f b, f c)
 
-eqFace (a1, a2, a3) (b1, b2, b3) =  (a1==b1 || a1==b2 || a1==b3)
-                                 && (a2==b1 || a2==b2 || a2==b3)
-                                 && (a3==b1 || a3==b2 || a3==b3) 
+instance Eq a => Eq (Face a) where
+    (Face (a1, a2, a3)) == (Face (b1, b2, b3)) =
+         (a1==b1 || a1==b2 || a1==b3)
+      && (a2==b1 || a2==b2 || a2==b3)
+      && (a3==b1 || a3==b2 || a3==b3) 
