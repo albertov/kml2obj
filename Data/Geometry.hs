@@ -1,12 +1,15 @@
 module Data.Geometry (
     LinearRing
+  , Face
+  , Surface
   , Geometry (..)
   , pointInside
+  , extrude
   , Vector2 (..)
   , Vector3 (..)
 ) where
 
-import Data.List (foldl')
+import Data.List (foldl', nubBy, sort)
 import Data.Vector.V2 (Vector2(..))
 import Data.Vector.V3 (Vector3(..))
 import Graphics.Triangulation.Delaunay (triangulate)
@@ -57,6 +60,38 @@ data Geometry a =
       }
    | MultiGeometry [Geometry a]
  deriving (Eq, Show)
+
+class Eq a => Vector2D a where
+    to2D :: a -> Vector2
                
-vector2D :: Vector3 -> Vector2
-vector2D (Vector3 x y _) = Vector2 x y
+instance Vector2D Vector3 where
+    to2D (Vector3 x y _) = Vector2 x y
+
+instance Vector2D Vector2 where
+    to2D = id
+
+to3D :: Double -> Vector2 -> Vector3
+to3D z (Vector2 x y) = Vector3 x y z
+
+type Face = (Vector3, Vector3, Vector3)
+type Surface = [Face]
+
+extrude :: Vector2D a => Double -> Geometry a -> Surface
+extrude h (MultiGeometry gs) = concat $ map (extrude h) gs
+extrude h (Polygon ob []) = floor ++ ceiling ++ walls
+  where
+    floor = map (mface sink) $ nubBy eqFace $ triangulate ob2d
+    ceiling = map (mface rise) $ nubBy eqFace $ triangulate ob2d
+    walls = concat $ map wall $ segments ob2d
+    wall (a,b) = [(rise a, rise b, sink a), (sink a, sink b, rise b)]
+    rise = to3D h
+    sink = to3D 0
+    mface f (a,b,c) = (f a, f b, f c)
+    ob2d = map to2D ob
+extrude h (Polygon ob ib) = undefined
+
+
+
+eqFace (a1, a2, a3) (b1, b2, b3) =  (a1==b1 || a1==b2 || a1==b3)
+                                 && (a2==b1 || a2==b2 || a2==b3)
+                                 && (a3==b1 || a3==b2 || a3==b3) 

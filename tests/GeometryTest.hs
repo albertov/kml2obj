@@ -25,3 +25,20 @@ geometrySpecs =
             let results = map (pointInside poly) points
                 points = [Vector2 0.1 0.1, Vector2 0.9 0.9]
             all ((==) True) results `shouldBe` True
+
+    describe "extrude" $ do
+        let ob = [Vector2 0 0, Vector2 0 1, Vector2 1 1, Vector2 1 0]
+            ib = [Vector2 0.25 0.25, Vector2 0.75 0.75, Vector2 0.75 0.25]
+            poly = Polygon ob []
+            poly2 = Polygon ob [ib]
+        it "extrudes polygon without inner boundary" $ do
+            let faces = extrude 10 poly
+            length faces `shouldBe` ( 2      -- ceiling
+                                    + 2      -- floor
+                                    + 2 * 4) -- 2 for each wall
+
+        it "extrudes polygon with inner boundary" $ do
+            let faces = extrude 10 poly2
+            length faces `shouldBe` ( 2      -- ceiling
+                                    + 2      -- floor
+                                    + 2 * 4) -- 2 for each wall
