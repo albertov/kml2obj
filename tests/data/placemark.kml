@@ -30,4 +30,32 @@
         </Polygon>
     </MultiGeometry>
   </Placemark>
+  <Placemark>
+    <name>Simple placemark</name>
+    <description>Attached to the ground. Intelligently places itself 
+       at the height of the underlying terrain.</description>
+        <Polygon>
+            <extrude>1</extrude>
+            <altitudeMode>relativeToGround</altitudeMode>
+            <outerBoundaryIs>
+                <LinearRing>
+                    <coordinates>
+                        1.411500049441974,38.90557164033295,3.5 1.411514937255822,38.90555562380744,3.5 1.411541034496691,38.90556958449058,3.5 1.411525552167526,38.90558640388341,3.5 1.411500049441974,38.90557164033295,3.5 
+                    </coordinates>
+                </LinearRing>
+            </outerBoundaryIs>
+            <innerBoundaryIs>
+                <LinearRing>
+                    <coordinates>
+                        1.411500049441974,38.90557164033295,4.5 1.411525552167526,38.90558640388341,4.5 1.411541034496691,38.90556958449058,4.5 1.411514937255822,38.90555562380744,4.5 1.411500049441974,38.90557164033295,4.5 
+                    </coordinates>
+                </LinearRing>
+                <LinearRing>
+                    <coordinates>
+                        1.411600300812785,38.90546658904186,4.5 1.41162310495965,38.90547825230839,4.5 1.411635028185498,38.90546588977738,4.5 1.41161225417918,38.90545287534514,4.5 1.411600300812785,38.90546658904186,4.5 
+                    </coordinates>
+                </LinearRing>
+            </innerBoundaryIs>
+        </Polygon>
+  </Placemark>
 </kml>

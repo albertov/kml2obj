@@ -32,13 +32,13 @@ geometrySpecs =
             poly = Polygon ob []
             poly2 = Polygon ob [ib]
         it "extrudes polygon without inner boundary" $ do
-            let faces = extrude 10 poly
-            length faces `shouldBe` ( 2      -- ceiling
-                                    + 2      -- floor
-                                    + 2 * 4) -- 2 for each wall
+            let [surface] = extrude 10 poly
+            length (faces surface) `shouldBe` ( 2      -- ceiling
+                                              + 2      -- floor
+                                              + 2 * 4) -- 2 for each wall
 
         it "extrudes polygon with inner boundary" $ do
-            let faces = extrude 10 poly2
-            length faces `shouldBe` ( 2      -- ceiling
-                                    + 2      -- floor
-                                    + 2 * 4) -- 2 for each wall
+            let [surface] = extrude 10 poly
+            length (faces surface) `shouldBe` ( 2      -- ceiling
+                                              + 2      -- floor
+                                              + 2 * 4) -- 2 for each wall

@@ -10,6 +10,8 @@ parseSpecs =
   describe "KML parsing tests" $ do
     it "parses a simple document" $ do
       doc <- parseKmlFile "tests/data/placemark.kml" :: IO KmlDocument
-      length (kmlPlacemarks doc) `shouldBe` 1
-      let geom = pGeometry $ head $ kmlPlacemarks doc
-      length (innerBoundary geom) `shouldBe` 2
+      length (kmlPlacemarks doc) `shouldBe` 2
+      let [g1, g2] = map pGeometry $ kmlPlacemarks doc
+      isMulti g1 `shouldBe` True
+      isMulti g2 `shouldBe` False
+      length (innerBoundary g2) `shouldBe` 2

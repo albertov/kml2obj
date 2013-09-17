@@ -1,15 +1,18 @@
 module Data.Geometry (
     LinearRing
-  , Face
-  , Surface
+  , Face (..)
+  , Surface (..)
   , Geometry (..)
   , pointInside
   , extrude
+  , surfaceVertices
+  , isMulti
   , Vector2 (..)
   , Vector3 (..)
 ) where
 
 import Data.List (foldl', nub, sort)
+import Data.Monoid
 import Data.Vector.V2 (Vector2(..))
 import Data.Vector.V3 (Vector3(..))
 import Graphics.Triangulation.Delaunay (triangulate)
@@ -61,37 +64,49 @@ data Geometry a =
    | MultiGeometry [Geometry a]
  deriving (Eq, Show)
 
-class Eq a => Vector2D a where
+isMulti (MultiGeometry _) = True
+isMulti _ = False
+
+class Ord a => Coord a where
     to2D :: a -> Vector2
+    to3D :: Double -> a -> Vector3
                
-instance Vector2D Vector3 where
-    to2D (Vector3 x y _) = Vector2 x y
+newtype Face a = Face (a, a, a) deriving Show
 
-instance Vector2D Vector2 where
-    to2D = id
+faceVertices (Face (a,b,c)) = [a, b, c]
 
-to3D :: Double -> Vector2 -> Vector3
-to3D z (Vector2 x y) = Vector3 x y z
+newtype Surface a = Surface {faces :: [Face a]} deriving Show
 
-newtype Face a = Face (a, a, a) deriving (Show)
+surfaceVertices = concat . map faceVertices . faces
 
-type Surface = [Face Vector3]
-
-extrude :: Vector2D a => Double -> Geometry a -> Surface
+extrude :: Coord a => Double -> Geometry a -> [Surface Vector3]
 extrude h (MultiGeometry gs) = concat $ map (extrude h) gs
-extrude h (Polygon ob []) = floor ++ ceiling ++ walls
+extrude h (Polygon [] _) = []
+extrude h (Polygon ob _) = [floor <> ceiling <> walls]
   where
-    floor = map (fmap sink) $ nub $ map Face $ triangulate ob2d
-    ceiling = map (fmap rise) $ nub $ map Face $ triangulate ob2d
-    walls = concat $ map wall $ segments ob2d
-    wall (a,b) = [ Face (rise a, rise b, sink a)
-                 , Face (sink a, sink b, rise b)]
+    floor = fmap sink $ Surface $ nub $ map Face $ triangulate ob2d
+    ceiling = fmap rise $ Surface $ nub $ map Face $ triangulate ob2d
+    walls = mconcat $ map wall $ segments ob2d
+    wall (a, b) = Surface [ Face (rise a, rise b, sink a)
+                          , Face (sink a, sink b, rise b)]
     rise = to3D h
     sink = to3D 0
     ob2d = map to2D ob
-extrude h (Polygon ob ib) = undefined
+-- extrude h (Polygon ob ib) = undefined
 
 
+--
+-- Instances
+-- 
+--
+instance Monoid (Surface a) where
+  mempty = Surface []
+  (Surface a) `mappend` (Surface b) = Surface (a `mappend` b)
+
+instance Functor Surface where
+    fmap f (Surface a) = Surface $ map (fmap f) a
+
+    
 instance Functor Face where
     fmap f (Face (a,b,c)) = Face (f a, f b, f c)
 
@@ -100,3 +115,17 @@ instance Eq a => Eq (Face a) where
          (a1==b1 || a1==b2 || a1==b3)
       && (a2==b1 || a2==b2 || a2==b3)
       && (a3==b1 || a3==b2 || a3==b3) 
+
+instance Coord Vector3 where
+    to2D (Vector3 x y _) = Vector2 x y
+    to3D _ = id
+
+instance Ord Vector3 where
+  (Vector3 a b c) `compare` (Vector3 a' b' c') = (a,b,c) `compare` (a',b',c')
+
+instance Coord Vector2 where
+    to2D = id
+    to3D z (Vector2 x y) = Vector3 x y z
+
+instance Ord Vector2 where
+  (Vector2 a b) `compare` (Vector2 a' b') = (a,b) `compare` (a',b')
