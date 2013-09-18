@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, BangPatterns #-}
 
 module Text.XML.Kml (
     KmlDocument (..)
@@ -7,15 +7,12 @@ module Text.XML.Kml (
   , parseKmlBS
   , parseKmlFile
   , parseCoordinates
-  , placemarkConduit
 ) where
 
 import Prelude hiding (readFile, writeFile)
 import Data.Geometry
 import Text.XML
 import Text.XML.Cursor
-import Data.XML.Types (Event)
-import qualified Text.XML.Stream.Parse as X
 import Data.Text (Text)
 import Control.Applicative (Applicative,
                             (<*>),
@@ -35,7 +32,6 @@ import Data.Char (isSpace)
 import Data.Default (def)
 import qualified Data.Text as T
 import Data.Text.Lazy (fromStrict)
-import Data.Conduit
 import qualified Data.Vector.Unboxed as U
 
 data KmlDocument = KmlDocument {
@@ -43,7 +39,8 @@ data KmlDocument = KmlDocument {
 } deriving (Eq, Show)
 
 data Placemark = Placemark {
-    pGeometry :: Geometry Vector3
+    pGeometry :: !(Geometry Vector3)
+  , pId :: Maybe Text
 } deriving (Eq, Show)
 
 parseKml :: (Monad m, Applicative m) => Text -> m KmlDocument
@@ -67,38 +64,21 @@ kName n = Name n (Just "http://www.opengis.net/kml/2.2") (Just "kml")
 
 kElement = element . kName
 
-placemarkConduit :: MonadThrow m => Consumer Event m [Placemark]
-placemarkConduit = X.force "kml" $ X.tagName (kName "kml") X.ignoreAttrs $ \_ ->
-    X.force "Document" $ X.tagName (kName "Document") X.ignoreAttrs $ \_ ->
-      concat <$> (X.many $ X.tagName (kName "Folder") X.ignoreAttrs $ \_ ->
-        X.many parsePlacemark)
-  where
-    parsePlacemark :: MonadThrow m => Consumer Event m (Maybe Placemark)
-    parsePlacemark = X.tagName (kName "Placemark") X.ignoreAttrs $ \_ ->
-        Placemark <$> X.force "Missing geometry" parseGeometry
-
-    parseGeometry = X.force "Placemark must have one geometry" $ X.choose [
-        X.tagNoAttr (kName "MultiGeometry") $ parseMuligeometry
-      , X.tagNoAttr (kName "Polygon") $ parsePolygon
-      ]
-
-    parseGeometry, parsePolygon, parseMuligeometry ::
-        MonadThrow m => Consumer Event m (Maybe (Geometry Vector3))
-    parsePolygon = undefined
-    parseMuligeometry = undefined
-          
 
 parseDoc :: (Monad m, Applicative m) => Document -> m KmlDocument
 parseDoc doc = do
     let pNodes     = fromDocument doc $// kElement "Placemark"
-        placemarks = catMaybes $ map (parsePlacemark . node) pNodes
+        placemarks = catMaybes $ map parsePlacemark pNodes
     return $ KmlDocument placemarks
   where
-    parsePlacemark :: (Monad m, Applicative m) => Node -> m Placemark
-    parsePlacemark p = do
+    parsePlacemark :: (Monad m, Applicative m) => Cursor -> m Placemark
+    parsePlacemark c = do
+        let p = node c
+            idAttr = laxAttribute "id" c
+            pId'   = if null idAttr  then Nothing else Just (head idAttr)
         geoms <- parseGeoms p
         case geoms of
-          [g] -> return $ Placemark g
+          [g] -> return $ Placemark {pGeometry=g, pId=pId'}
           _   -> fail "Expected only one geometry per placemark"
 
     parseGeoms :: (Monad m, Applicative m) => Node -> m [Geometry Vector3]
@@ -132,7 +112,7 @@ parseCoordinates :: Text -> Either String (LinearRing Vector3)
 parseCoordinates = parseOnly (coordinates <* endOfInput)
 
 coordinates :: Parser (LinearRing Vector3)
-coordinates = U.fromList <$> coordinate `sepBy1` (char ' ') 
+coordinates = U.fromList <$> coordinate `sepBy1'` (char ' ') 
   where
     coordinate = coord3d <|> coord2d
     coord3d = Vector3 <$> double <*> "," .*> double <*> "," .*> double

@@ -20,6 +20,7 @@ library
   exposed-modules:  Text.XML.Kml
                     Text.Wavefront
                     Data.Geometry
+                    Data.GeoReference
   -- other-modules:       
   -- other-extensions:    
   build-depends: base >=4.5 && <5,
@@ -38,6 +39,7 @@ library
                  hashable,
                  double-conversion,
                  vector,
+                 template-haskell,
                  vector-th-unbox
   ghc-options:       -O2 -fllvm -funbox-strict-fields -optlo-O3
 
@@ -60,7 +62,8 @@ executable             kml2obj
                        hashable,
                        double-conversion,
                        vector,
-                       vector-th-unbox
+                       vector-th-unbox,
+                       proj4-hs-bindings
 
     ghc-options:       -O2 -fllvm -funbox-strict-fields -optlo-O3
 

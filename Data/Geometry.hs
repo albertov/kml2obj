@@ -1,15 +1,16 @@
-{-# LANGUAGE MultiParamTypeClasses, TemplateHaskell, TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses, TemplateHaskell, TypeFamilies, BangPatterns #-}
 module Data.Geometry (
     LinearRing
   , Face (..)
-  , Surface (..)
   , Geometry (..)
+  , Coord (..)
   , pointInside
   , extrude
-  , surfaceVertices
   , isMulti
   , Vector2 (..)
   , Vector3 (..)
+  , U.fromList
+  , U.toList
 ) where
 
 import Data.List (foldl', nub, sort)
@@ -19,7 +20,6 @@ import Data.Vector.V3 (Vector3(..))
 import Data.Vector.Unboxed.Deriving (derivingUnbox)
 import qualified Data.Vector.Generic.Base as V
 import qualified Data.Vector.Unboxed as U
-import qualified Data.HashSet as S
 import Data.Hashable (Hashable)
 
 epsilon = 1e-6
@@ -63,10 +63,10 @@ type LinearRing = U.Vector
 
 data Geometry a =
     Polygon {
-        outerBoundary :: LinearRing a
-      , innerBoundary :: [LinearRing a]
+        outerBoundary :: !(LinearRing a)
+      , innerBoundary :: ![LinearRing a]
       }
-   | MultiGeometry [Geometry a]
+   | MultiGeometry ![Geometry a]
  deriving (Eq, Show)
 
 isMulti (MultiGeometry _) = True
@@ -78,23 +78,18 @@ class (Ord a, U.Unbox a) => Coord a where
                
 newtype Face a = Face {faceVertices :: LinearRing a} deriving Show
 
-newtype Surface a = Surface {faces :: [Face a]} deriving Show
 
-surfaceVertices :: (U.Unbox a, Hashable a, Ord a) => Surface a -> [a]
-surfaceVertices =
-    S.toList . S.fromList . concat . map (U.toList . faceVertices) . faces
-
-extrude :: Coord a => Double -> Geometry a -> [Surface Vector3]
+extrude :: Coord a => Double -> Geometry a -> [Face Vector3]
 extrude h (MultiGeometry gs) = concat $ map (extrude h) gs
 extrude h (Polygon ob _)
     | U.null ob = []
-    | otherwise = [floor <> ceiling <> walls]
+    | otherwise = floor ++ ceiling ++ walls
   where
-    floor, ceiling, walls :: Surface Vector3
-    floor = Surface $ [Face $ U.map sink ob2d]
-    ceiling = Surface $ [Face $ U.map rise ob2d]
-    walls = mconcat $ map wall $ U.toList $ segments ob2d
-    wall (a, b) = Surface [face [rise a, rise b, sink b, sink a, rise a]]
+    floor, ceiling, walls :: [Face Vector3]
+    floor = [Face $ U.map sink ob2d]
+    ceiling = [Face $ U.map rise ob2d]
+    walls = map wall $ U.toList $ segments ob2d
+    wall (a, b) = face [rise a, rise b, sink b, sink a, rise a]
     rise = to3D h
     sink = to3D 0
     ob2d = U.map to2D ob
@@ -106,10 +101,6 @@ extrude h (Polygon ob _)
 -- Instances
 -- 
 --
-instance Monoid (Surface a) where
-  mempty = Surface []
-  (Surface a) `mappend` (Surface b) = Surface (a `mappend` b)
-
 
 instance Coord Vector3 where
     to2D (Vector3 x y _) = Vector2 x y

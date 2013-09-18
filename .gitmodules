@@ -1,6 +1,3 @@
-[submodule "Delaunay"]
-	path = Delaunay
-	url = git@github.com:meteogrid/Delaunay.git
 [submodule "proj4-hs-bindings"]
 	path = proj4-hs-bindings
 	url = git@github.com:pavpen/proj4-hs-bindings.git
