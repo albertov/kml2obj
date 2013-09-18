@@ -8,6 +8,7 @@ import Text.XML.Kml
 import Text.Wavefront
 import Data.Geometry
 import Control.Monad
+import qualified Data.Vector.Unboxed as U
 import qualified Data.ByteString.Lazy as BS
 
 
@@ -25,5 +26,6 @@ main = do
 
 getHeight (MultiGeometry []) = 0
 getHeight (MultiGeometry (x:_)) = getHeight x
-getHeight (Polygon [] _) = 0
-getHeight (Polygon (Vector3 _ _ z:_) _) =  z
+getHeight (Polygon ob _)
+    | U.null ob = 0
+    | otherwise = let Vector3 _ _ z = U.unsafeHead ob in z

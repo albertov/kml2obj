@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings#-}
+{-# LANGUAGE OverloadedStrings, BangPatterns #-}
 module Text.Wavefront (
     writeSurfaces
 ) where
@@ -12,10 +12,11 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Monoid
 import Data.Maybe (fromMaybe)
 import Data.Geometry
-import Data.List (nub)
+import Data.List (foldl')
 import Data.String (IsString(fromString))
 import Data.Hashable (Hashable(..))
 import Data.Double.Conversion.ByteString (toFixed, toShortest)
+import qualified Data.Vector.Unboxed as U
 
 -- | Serializa una lista de superficies a formato obj
 --   (http://www.martinreddy.net/gfx/3d/OBJ.spec)
@@ -39,7 +40,7 @@ evalBuilder b = evalState b (1, M.empty)
 --   para que esté en la posición que se le ha asignado
 saveVertex :: Vector3 -> WriterS Bool
 saveVertex v = do
-    (c, m) <- get
+    (!c, !m) <- get
     put $ if v `M.member` m then (c, m) else (c+1, M.insert v c m)
     return $ v `M.member` m
 
@@ -48,6 +49,9 @@ saveVertex v = do
 lookupVertex :: Vector3 -> WriterS Int
 lookupVertex v = liftM (\(_, m) -> fromMaybe (-1) (M.lookup v m)) get
 
+lookupVertexes vs = liftM go get
+  where
+    go (_,m) = map (\v -> fromMaybe (-1) (M.lookup v m)) vs
 
 
 -- | Builder para el fichero .obj en su conjunto. Escribe cada una de las
@@ -59,7 +63,7 @@ objBuilder =  liftM mconcat . mapM surfaceBuilder
 --   y luego las caras
 surfaceBuilder :: Surface Vector3 -> WriterS Builder
 surfaceBuilder s = do
-    bVertices <- mapM vertexBuilder $ nub $ surfaceVertices s
+    bVertices <- mapM vertexBuilder $ surfaceVertices s
     bFaces <- mapM faceBuilder $ faces s
     return $ (mconcat bVertices) <> (mconcat bFaces)
 
@@ -77,13 +81,15 @@ int = fromByteString . fromString . show
 space = copyByteString " "
 eol = copyByteString "\n"
 vPrefix = copyByteString "v "
-fPrefix = copyByteString "f "
+fPrefix = copyByteString "f"
     
 -- | Builder para una cara. Resuelve referencias vertice/posicion-en-fichero
 faceBuilder :: Face Vector3 -> WriterS Builder
-faceBuilder (Face (a,b,c)) = do
-    [a',b',c'] <- mapM lookupVertex [a,b,c]
-    return $ fPrefix <> int a' <> space <> int b' <> space <> int c' <> eol
+faceBuilder (Face vs) = do
+    vs' <- lookupVertexes (U.toList vs)
+    return $ fPrefix <> (prependAll int space vs') <> eol
+
+prependAll f sep = foldl' (<>) mempty . map (\v -> sep <> f v)
 
 instance Hashable Vector3 where
   hashWithSalt s (Vector3 x y z) = hashWithSalt s (x,y,z)

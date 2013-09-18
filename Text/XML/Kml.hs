@@ -36,6 +36,7 @@ import Data.Default (def)
 import qualified Data.Text as T
 import Data.Text.Lazy (fromStrict)
 import Data.Conduit
+import qualified Data.Vector.Unboxed as U
 
 data KmlDocument = KmlDocument {
     kmlPlacemarks :: [Placemark]
@@ -127,11 +128,11 @@ parseDoc doc = do
                               &// kElement "coordinates"
                               &/ content
 
-parseCoordinates :: Text -> Either String [Vector3]
+parseCoordinates :: Text -> Either String (LinearRing Vector3)
 parseCoordinates = parseOnly (coordinates <* endOfInput)
 
-coordinates :: Parser [Vector3]
-coordinates = coordinate `sepBy1` (char ' ') 
+coordinates :: Parser (LinearRing Vector3)
+coordinates = U.fromList <$> coordinate `sepBy1` (char ' ') 
   where
     coordinate = coord3d <|> coord2d
     coord3d = Vector3 <$> double <*> "," .*> double <*> "," .*> double

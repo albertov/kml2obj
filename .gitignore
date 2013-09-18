@@ -2,3 +2,5 @@
 dist
 cabal*config
 *.sw?
+*.hi
+*.o
