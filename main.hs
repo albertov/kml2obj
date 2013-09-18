@@ -21,7 +21,7 @@ import Data.List.Split (chunksOf)
 
 main = do
     [input, output] <- getArgs
-    KmlDocument placemarks <- parseKmlFile $ fromString input
+    KmlDocument placemarks <- parseKmlFile input
     let geoms = map pGeometry placemarks
         ext = foldl' (<>) mempty $ map geometryExtent geoms'
         georef = GeoReference ext (Box (-5) (-5) 5 (round (10*ratio) - 5))

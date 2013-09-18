@@ -4,15 +4,14 @@ module Text.XML.Kml (
     KmlDocument (..)
   , Placemark (..)
   , parseKml
-  , parseKmlBS
   , parseKmlFile
   , parseCoordinates
 ) where
 
 import Prelude hiding (readFile, writeFile)
+import System.IO (openFile, IOMode(..))
 import Data.Geometry
-import Text.XML
-import Text.XML.Cursor
+import Data.ByteString.Lazy (ByteString, hGetContents)
 import Data.Text (Text)
 import Control.Applicative (Applicative,
                             (<*>),
@@ -21,18 +20,17 @@ import Control.Applicative (Applicative,
                             (<$>),
                             (<|>),
                             pure)
-import Control.Monad (liftM)
+import Control.Monad (liftM, when)
 import Data.Maybe (catMaybes)
 import Data.Monoid
 import Data.Attoparsec.Text
-import Data.ByteString.Lazy (ByteString)
 import Data.Attoparsec.Combinator
 import Data.Text (Text)
 import Data.Char (isSpace)
-import Data.Default (def)
 import qualified Data.Text as T
-import Data.Text.Lazy (fromStrict)
 import qualified Data.Vector.Unboxed as U
+import Text.XML.Expat.Tree (UNode, NodeG(..), parseThrowing, defaultParseOptions)
+
 
 data KmlDocument = KmlDocument {
     kmlPlacemarks :: [Placemark]
@@ -43,70 +41,81 @@ data Placemark = Placemark {
   , pId :: Maybe Text
 } deriving (Eq, Show)
 
-parseKml :: (Monad m, Applicative m) => Text -> m KmlDocument
-parseKml t = do
-    doc <- liftEither $ parseText def (fromStrict t)
-    parseDoc doc
 
-parseKmlBS :: (Monad m, Applicative m) => ByteString -> m KmlDocument
-parseKmlBS t = do
-    doc <- liftEither $ parseLBS def t
-    parseDoc doc
+parseKmlFile :: FilePath -> IO KmlDocument
+parseKmlFile name = openFile name ReadMode >>= hGetContents  >>= parseKml
 
-parseKmlFile path = do
-    doc <- readFile def path
-    case parseDoc doc of
-      Left e -> fail e
-      Right a -> return a
-
-kName :: Text -> Name
-kName n = Name n (Just "http://www.opengis.net/kml/2.2") (Just "kml")
-
-kElement = element . kName
-
-
-parseDoc :: (Monad m, Applicative m) => Document -> m KmlDocument
-parseDoc doc = do
-    let pNodes     = fromDocument doc $// kElement "Placemark"
-        placemarks = catMaybes $ map parsePlacemark pNodes
-    return $ KmlDocument placemarks
+parseKml :: (Monad m, Applicative m) => ByteString -> m KmlDocument
+parseKml = parseTree . parseThrowing defaultParseOptions
   where
-    parsePlacemark :: (Monad m, Applicative m) => Cursor -> m Placemark
-    parsePlacemark c = do
-        let p = node c
-            idAttr = laxAttribute "id" c
-            pId'   = if null idAttr  then Nothing else Just (head idAttr)
-        geoms <- parseGeoms p
-        case geoms of
-          [g] -> return $ Placemark {pGeometry=g, pId=pId'}
+    parseTree :: (Monad m, Applicative m) => UNode Text -> m KmlDocument
+    parseTree = return . KmlDocument . catMaybes . extractPlacemarks
+
+    extractPlacemarks e@(Element tag _ children)
+        | tag `elem` ["kml", "Document", "Folder"]
+            = concat $ map extractPlacemarks children
+        | tag == "Placemark" = [parsePlacemark e]
+        | otherwise          = []
+    extractPlacemarks _ = []
+
+    parsePlacemark e@(Element _ attrs cs) = do
+        let id' = lookupAttr attrs "id"
+        geometries <- mapM parseGeometry $ filter isGeomNode cs
+        case geometries of
+          [g] -> return $ Placemark {pGeometry=g, pId=id'}
           _   -> fail "Expected only one geometry per placemark"
+    parsePlacemark _ = Nothing
 
-    parseGeoms :: (Monad m, Applicative m) => Node -> m [Geometry Vector3]
-    parseGeoms p = (<>) <$> mapM (parseMulti . node) multis
-                        <*> mapM (parsePolygon . node) polys
-      where
-        multis = fromNode p $/ kElement "MultiGeometry"
-        polys = fromNode p $/ kElement "Polygon"
+    parseGeometry (Element "MultiGeometry" _ cs) = do
+        subgeoms <- mapM parseGeometry $ filter isGeomNode cs
+        return $ MultiGeometry subgeoms
 
-    parseMulti p = MultiGeometry <$> parseGeoms p
+    parseGeometry (Element "Polygon" _ cs) = do
+        e <- lookupChild cs "outerBoundaryIs"
+        obCoords <- mapM parseLinearRing $ childElements e
+        when (length obCoords < 1) $
+          fail "outer boundary should have one ring"
+        when (length obCoords > 1) $
+          fail "outer boundary should have only one ring"
+        let ibE = lookupChild cs "innerBoundaryIs"
+        ibCoords <- case ibE of
+                      Just e' -> mapM parseLinearRing (childElements e')
+                      Nothing -> return []
+        return $ Polygon (head obCoords) ibCoords
 
-    parsePolygon p = Polygon <$> oBoundary <*> lRings
-      where
-        oBoundary = do
-          coords <- parseCoords obCoords
-          case coords of
-            [cs] -> return cs
-            []   -> fail "No outer boundary"
-            _    -> fail "Multiple outer boundaries"
-        lRings = parseCoords ibCoords
-        c = fromNode p
-        parseCoords = mapM (liftEither . parseCoordinates . T.strip)
-        obCoords = fromNode p $/ kElement "outerBoundaryIs"
-                              &// kElement "coordinates"
-                              &/ content
-        ibCoords = fromNode p $/ kElement "innerBoundaryIs"
-                              &// kElement "coordinates"
-                              &/ content
+    parseGeometry (Element name _ _) =
+        fail $ "Geometry '" ++ (T.unpack name) ++ "' not supported"
+
+    isGeomNode (Element tag _ _)
+        | tag `elem` ["MultiGeometry", "Polygon"] = True
+        | otherwise                               = False
+    isGeomNode _ = False
+
+    childElements (Element _ _ cs) = filter isElement cs
+    childElements _ = []
+
+    isElement (Element _ _ _) = True
+    isElement _               = False
+
+    parseLinearRing (Element "LinearRing" _ cs) = do
+      Element _ _ cs <- lookupChild cs "coordinates"
+      let t = T.concat $ map (\(Text t) -> t) cs
+      liftEither $ parseCoordinates $ T.strip t
+    parseLinearRing _ = fail "Not a LinearRing node"
+
+    lookupAttr attrs name =
+      case filter ((==) name . fst) attrs of
+        (_,v):_ -> return v
+        _       -> fail $ "Attribute not found: " ++ (T.unpack name)
+
+    lookupChild children name =
+      case filter (matchTag name) children of
+        x:_ -> return x
+        _   -> fail $ "Child not found: " ++ (T.unpack name)
+
+    matchTag name (Element tag _ _) = name==tag
+    matchTag _ _ = False
+
 
 parseCoordinates :: Text -> Either String (LinearRing Vector3)
 parseCoordinates = parseOnly (coordinates <* endOfInput)
