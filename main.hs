@@ -16,25 +16,28 @@ import qualified Data.Vector.Unboxed as U
 import qualified Data.ByteString.Lazy as BS
 import Data.Vector.V2 (Vector2(..))
 import Geo.Proj4
+import Data.List.Split (chunksOf)
 
 
 main = do
     [input, output] <- getArgs
     KmlDocument placemarks <- parseKmlFile $ fromString input
-    let geoms = map (reprojectGeom f . pGeometry) placemarks
-        ext = foldl' (<>) mempty $ map geometryExtent geoms
-        georef = GeoReference ext (Box 0 0 100 (round (100*ratio)))
+    let geoms = map pGeometry placemarks
+        ext = foldl' (<>) mempty $ map geometryExtent geoms'
+        georef = GeoReference ext (Box (-5) (-5) 5 (round (10*ratio) - 5))
         ratio = height ext / width ext
-        geoms' = map (reprojectGeom f2) geoms
-        pFaces = map (\g -> extrude (getHeight g) g) geoms
+        geoms' = map (reprojectGeom f) geoms
+        geoms'' = map (reprojectGeom f2) geoms'
+        pFaces = map (\g -> extrude (getHeight g) g) geoms'
         objs = map (\(p,fs) -> Object fs (pId p)) $ zip placemarks pFaces
         pj = newProjection "+init=epsg:25831"
         f (Vector3 x y z) = Vector3 x' y' z
-          where (x', y')         = pjFwd pj (x*pi/180, y*pi/180)
+          where (x', y') = pjFwd pj (x*pi/180, y*pi/180)
         f2 (Vector3 x y z) = Vector3 x' y' (z * (fst $ scale georef))
           where SubPixel x' y' = forwardS georef $ Point x y
-    withFile output WriteMode $ \h -> do
-      BS.hPut h $ writeObjects objs
+    forM_ (zip [1..] $ chunksOf 100 objs) $ \(ix, chunk) -> do
+        withFile (show ix ++ "." ++ output) WriteMode $ \h -> do
+          BS.hPut h $ writeObjects chunk
 
 getHeight (MultiGeometry []) = 0
 getHeight (MultiGeometry (x:_)) = getHeight x

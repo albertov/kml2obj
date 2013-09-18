@@ -63,7 +63,8 @@ executable             kml2obj
                        double-conversion,
                        vector,
                        vector-th-unbox,
-                       proj4-hs-bindings
+                       proj4-hs-bindings,
+                       split
 
     ghc-options:       -O2 -fllvm -funbox-strict-fields -optlo-O3
 
