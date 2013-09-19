@@ -103,18 +103,22 @@ extrude h (Polygon ob _)
 --
 
 instance Coord Vector3 where
+    {-# INLINE to2D #-}
     to2D (Vector3 x y _) = Vector2 x y
     to3D _ = id
 
 instance Coord Vector2 where
     to2D = id
+    {-# INLINE to3D #-}
     to3D z (Vector2 x y) = Vector3 x y z
 
 
 instance Ord Vector3 where
+  {-# INLINE compare #-}
   (Vector3 a b c) `compare` (Vector3 a' b' c') = (a,b,c) `compare` (a',b',c')
 
 instance Ord Vector2 where
+  {-# INLINE compare #-}
   (Vector2 a b) `compare` (Vector2 a' b') = (a,b) `compare` (a',b')
 
 derivingUnbox "Vector2"

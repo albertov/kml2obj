@@ -121,7 +121,7 @@ parseCoordinates :: Text -> Either String (LinearRing Vector3)
 parseCoordinates = parseOnly (coordinates <* endOfInput)
 
 coordinates :: Parser (LinearRing Vector3)
-coordinates = U.fromList <$> coordinate `sepBy1'` (char ' ') 
+coordinates = U.fromList <$> coordinate `sepBy1` (char ' ') 
   where
     coordinate = coord3d <|> coord2d
     coord3d = Vector3 <$> double <*> "," .*> double <*> "," .*> double

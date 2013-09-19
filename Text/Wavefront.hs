@@ -69,14 +69,14 @@ lookupVertexes vs = liftM go get
     go (WState _ m) = map (\v -> fromMaybe (-1) (M.lookup v m)) vs
 
 
--- | Builder para una superficie. Primero escribe los vertices (eliminando dups)
---   y luego las caras
+-- | Builder para un objeto. Primero escribe el id, luego los vertices y luego
+--   las caras
 object :: Object Vector3 -> WriterS Builder
 object s = do
     bVertices <- mapM vertex $ objectVertices s
     bFaces <- mapM face $ faces s
-    let eol' = maybe eol (\id' -> fromText id' <> eol) (obId s)
-    return $ oPrefix <> eol' <> (mconcat bVertices) <> (mconcat bFaces)
+    let prefix = maybe oPrefix ((oPrefix <>). fromText) (obId s)
+    return $ prefix <> eol <> (mconcat bVertices) <> (mconcat bFaces)
 
 -- | Builder para un vertice. Es un noop si el vertice ya ha sido escrito
 vertex :: Vector3 -> WriterS Builder
@@ -100,9 +100,9 @@ fPrefix = copyByteString "f"
 face :: Face Vector3 -> WriterS Builder
 face (Face vs) = do
     vs' <- lookupVertexes (U.toList vs)
-    return $ fPrefix <> (separateBy space $ map int vs') <> eol
+    return $ fPrefix <> (separateByPrefix space $ map int vs') <> eol
 
-separateBy sep = mconcat . map (sep <>)
+separateByPrefix sep = mconcat . map (sep <>)
 
 instance Hashable Vector3 where
   hashWithSalt s (Vector3 x y z) = hashWithSalt s (x,y,z)
